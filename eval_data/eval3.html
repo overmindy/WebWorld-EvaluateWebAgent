@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时间选择器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        .wheel-container {
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+        }
+        .wheel-item {
+            transition: all 0.2s ease;
+        }
+        .wheel-item.selected {
+            transform: scale(1.1);
+            font-weight: 600;
+        }
+        .wheel-item.fade {
+            opacity: 0.3;
+        }
+        :root {
+            --primary-color: #007AFF;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-md mx-auto bg-white shadow-lg rounded-lg overflow-hidden">
+        <!-- Header -->
+        <div class="bg-white px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">选择时间</h2>
+            <p class="text-sm text-gray-500 mt-1">选择开始和结束时间范围</p>
+        </div>
+
+        <!-- Utility Components -->
+        <div class="px-6 py-3 bg-gray-50 border-b border-gray-200">
+            <button 
+                id="setNowBtn" 
+                class="inline-flex items-center px-3 py-2 text-sm font-medium text-white rounded-md shadow-sm transition-colors"
+                style="background-color: var(--primary-color);"
+                onmouseover="this.style.backgroundColor='#0056CC'"
+                onmouseout="this.style.backgroundColor='var(--primary-color)'"
+            >
+                <i class="ri-time-line mr-2"></i>
+                现在
+            </button>
+        </div>
+
+        <!-- Range Selection Tabs -->
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex space-x-1 bg-gray-100 rounded-lg p-1">
+                <button 
+                    id="startTimeTab" 
+                    class="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors tab-button active"
+                    style="background-color: var(--primary-color); color: white;"
+                >
+                    开始时间
+                </button>
+                <button 
+                    id="endTimeTab" 
+                    class="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors tab-button"
+                    style="color: #6B7280;"
+                >
+                    结束时间
+                </button>
+            </div>
+        </div>
+
+        <!-- Wheel Selectors -->
+        <div class="px-6 py-8">
+            <div class="flex items-center justify-center space-x-8">
+                <!-- Hour Wheel -->
+                <div class="flex flex-col items-center">
+                    <div class="text-xs text-gray-500 mb-2">小时</div>
+                    <div class="relative">
+                        <div class="absolute inset-0 pointer-events-none">
+                            <div class="absolute top-1/2 left-0 right-0 h-10 border-t border-b border-blue-200 transform -translate-y-1/2 rounded-md" style="border-color: var(--primary-color); opacity: 0.3;"></div>
+                        </div>
+                        <div 
+                            id="hourWheel" 
+                            class="wheel-container h-32 w-16 overflow-y-scroll scrollbar-hide scroll-smooth"
+                            style="scrollbar-width: none; -ms-overflow-style: none;"
+                        >
+                            <div class="py-11"></div>
+                            <!-- Hours will be populated by JavaScript -->
+                            <div class="py-11"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Minute Wheel -->
+                <div class="flex flex-col items-center">
+                    <div class="text-xs text-gray-500 mb-2">分钟</div>
+                    <div class="relative">
+                        <div class="absolute inset-0 pointer-events-none">
+                            <div class="absolute top-1/2 left-0 right-0 h-10 border-t border-b border-blue-200 transform -translate-y-1/2 rounded-md" style="border-color: var(--primary-color); opacity: 0.3;"></div>
+                        </div>
+                        <div 
+                            id="minuteWheel" 
+                            class="wheel-container h-32 w-16 overflow-y-scroll scrollbar-hide scroll-smooth"
+                            style="scrollbar-width: none; -ms-overflow-style: none;"
+                        >
+                            <div class="py-11"></div>
+                            <!-- Minutes will be populated by JavaScript -->
+                            <div class="py-11"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AM/PM Toggle -->
+                <div class="flex flex-col items-center">
+                    <div class="text-xs text-gray-500 mb-2">上午/下午</div>
+                    <div class="flex flex-col space-y-2">
+                        <button 
+                            id="amBtn" 
+                            class="px-3 py-2 text-sm font-medium rounded-md border-2 transition-all ampm-button active"
+                            style="border-color: var(--primary-color); background-color: var(--primary-color); color: white;"
+                        >
+                            上午
+                        </button>
+                        <button 
+                            id="pmBtn" 
+                            class="px-3 py-2 text-sm font-medium rounded-md border-2 transition-all ampm-button"
+                            style="border-color: #E5E7EB; color: #6B7280;"
+                        >
+                            下午
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selected Time Display -->
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200">
+            <div class="text-sm text-gray-600">
+                <div class="flex justify-between items-center">
+                    <span>选中时间范围:</span>
+                    <span id="selectedTimeDisplay" class="font-medium" style="color: var(--primary-color);">未选择</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirmation Button -->
+        <div class="px-6 py-4 border-t border-gray-200">
+            <button 
+                id="confirmBtn" 
+                class="w-full py-3 text-base font-medium text-white rounded-lg shadow-sm transition-colors"
+                style="background-color: var(--primary-color);"
+                onmouseover="this.style.backgroundColor='#0056CC'"
+                onmouseout="this.style.backgroundColor='var(--primary-color)'"
+            >
+                确认选择
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let currentEditingRange = 'start'; // 'start' or 'end'
+        let startTime = { hour: 8, minute: 38, ampm: 'pm' };
+        let endTime = { hour: 9, minute: 38, ampm: 'pm' };
+        
+        // Initialize wheels
+        function initializeWheels() {
+            const hourWheel = document.getElementById('hourWheel');
+            const minuteWheel = document.getElementById('minuteWheel');
+            
+            // Populate hour wheel (1-12 for 12-hour format)
+            for (let i = 1; i <= 12; i++) {
+                const hourItem = document.createElement('div');
+                hourItem.className = 'wheel-item h-10 flex items-center justify-center text-lg cursor-pointer';
+                hourItem.textContent = i.toString().padStart(2, '0');
+                hourItem.dataset.value = i;
+                hourWheel.appendChild(hourItem);
+            }
+            
+            // Populate minute wheel (0-59)
+            for (let i = 0; i < 60; i++) {
+                const minuteItem = document.createElement('div');
+                minuteItem.className = 'wheel-item h-10 flex items-center justify-center text-lg cursor-pointer';
+                minuteItem.textContent = i.toString().padStart(2, '0');
+                minuteItem.dataset.value = i;
+                minuteWheel.appendChild(minuteItem);
+            }
+            
+            // Set initial positions
+            setWheelPosition('hour', startTime.hour);
+            setWheelPosition('minute', startTime.minute);
+            updateAMPMButtons(startTime.ampm);
+        }
+        
+        function setWheelPosition(type, value) {
+            const wheel = document.getElementById(type + 'Wheel');
+            const items = wheel.querySelectorAll('.wheel-item[data-value]');
+            
+            let targetIndex = -1;
+            items.forEach((item, index) => {
+                if (parseInt(item.dataset.value) === value) {
+                    targetIndex = index;
+                }
+            });
+            
+            if (targetIndex !== -1) {
+                const itemHeight = 40; // 10 * 4 (h-10)
+                wheel.scrollTop = targetIndex * itemHeight;
+            }
+        }
+        
+        function updateWheelSelection(wheel) {
+            const items = wheel.querySelectorAll('.wheel-item[data-value]');
+            const wheelRect = wheel.getBoundingClientRect();
+            const wheelCenter = wheelRect.top + wheelRect.height / 2;
+            
+            let closestItem = null;
+            let closestDistance = Infinity;
+            
+            items.forEach(item => {
+                const itemRect = item.getBoundingClientRect();
+                const itemCenter = itemRect.top + itemRect.height / 2;
+                const distance = Math.abs(itemCenter - wheelCenter);
+                
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestItem = item;
+                }
+                
+                // Apply visual effects
+                if (distance < 20) {
+                    item.classList.add('selected');
+                    item.classList.remove('fade');
+                } else if (distance < 60) {
+                    item.classList.remove('selected', 'fade');
+                } else {
+                    item.classList.add('fade');
+                    item.classList.remove('selected');
+                }
+            });
+            
+            return closestItem ? parseInt(closestItem.dataset.value) : null;
+        }
+        
+        function updateAMPMButtons(selectedAmPm) {
+            const amBtn = document.getElementById('amBtn');
+            const pmBtn = document.getElementById('pmBtn');
+            
+            if (selectedAmPm === 'am') {
+                amBtn.style.borderColor = 'var(--primary-color)';
+                amBtn.style.backgroundColor = 'var(--primary-color)';
+                amBtn.style.color = 'white';
+                amBtn.classList.add('active');
+                
+                pmBtn.style.borderColor = '#E5E7EB';
+                pmBtn.style.backgroundColor = 'transparent';
+                pmBtn.style.color = '#6B7280';
+                pmBtn.classList.remove('active');
+            } else {
+                pmBtn.style.borderColor = 'var(--primary-color)';
+                pmBtn.style.backgroundColor = 'var(--primary-color)';
+                pmBtn.style.color = 'white';
+                pmBtn.classList.add('active');
+                
+                amBtn.style.borderColor = '#E5E7EB';
+                amBtn.style.backgroundColor = 'transparent';
+                amBtn.style.color = '#6B7280';
+                amBtn.classList.remove('active');
+            }
+        }
+        
+        function updateTabButtons() {
+            const startTab = document.getElementById('startTimeTab');
+            const endTab = document.getElementById('endTimeTab');
+            
+            if (currentEditingRange === 'start') {
+                startTab.style.backgroundColor = 'var(--primary-color)';
+                startTab.style.color = 'white';
+                startTab.classList.add('active');
+                
+                endTab.style.backgroundColor = 'transparent';
+                endTab.style.color = '#6B7280';
+                endTab.classList.remove('active');
+            } else {
+                endTab.style.backgroundColor = 'var(--primary-color)';
+                endTab.style.color = 'white';
+                endTab.classList.add('active');
+                
+                startTab.style.backgroundColor = 'transparent';
+                startTab.style.color = '#6B7280';
+                startTab.classList.remove('active');
+            }
+        }
+        
+        function getCurrentTime() {
+            return currentEditingRange === 'start' ? startTime : endTime;
+        }
+        
+        function setCurrentTime(time) {
+            if (currentEditingRange === 'start') {
+                startTime = { ...time };
+            } else {
+                endTime = { ...time };
+            }
+        }
+        
+        function formatTime(timeObj) {
+            const hour = timeObj.hour.toString().padStart(2, '0');
+            const minute = timeObj.minute.toString().padStart(2, '0');
+            const ampmText = timeObj.ampm === 'am' ? '上午' : '下午';
+            return `${ampmText} ${hour}:${minute}`;
+        }
+        
+        function updateDisplayedTime() {
+            const display = document.getElementById('selectedTimeDisplay');
+            const startFormatted = formatTime(startTime);
+            const endFormatted = formatTime(endTime);
+            display.textContent = `${startFormatted} - ${endFormatted}`;
+        }
+        
+        function switchToTimeRange(range) {
+            currentEditingRange = range;
+            const currentTime = getCurrentTime();
+            
+            setWheelPosition('hour', currentTime.hour);
+            setWheelPosition('minute', currentTime.minute);
+            updateAMPMButtons(currentTime.ampm);
+            updateTabButtons();
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeWheels();
+            updateDisplayedTime();
+            
+            // Wheel scroll events
+            const hourWheel = document.getElementById('hourWheel');
+            const minuteWheel = document.getElementById('minuteWheel');
+            
+            let scrollTimeout;
+            
+            function handleWheelScroll(wheel, type) {
+                clearTimeout(scrollTimeout);
+                scrollTimeout = setTimeout(() => {
+                    const selectedValue = updateWheelSelection(wheel);
+                    if (selectedValue !== null) {
+                        const currentTime = getCurrentTime();
+                        currentTime[type] = selectedValue;
+                        setCurrentTime(currentTime);
+                        updateDisplayedTime();
+                    }
+                }, 100);
+            }
+            
+            hourWheel.addEventListener('scroll', () => handleWheelScroll(hourWheel, 'hour'), { passive: true });
+            minuteWheel.addEventListener('scroll', () => handleWheelScroll(minuteWheel, 'minute'), { passive: true });
+            
+            // Touch events for mobile
+            let startY, startScrollTop;
+            
+            function addTouchEvents(wheel, type) {
+                wheel.addEventListener('touchstart', (e) => {
+                    startY = e.touches[0].clientY;
+                    startScrollTop = wheel.scrollTop;
+                }, { passive: true });
+                
+                wheel.addEventListener('touchmove', (e) => {
+                    const y = e.touches[0].clientY;
+                    const deltaY = startY - y;
+                    wheel.scrollTop = startScrollTop + deltaY;
+                }, { passive: true });
+                
+                wheel.addEventListener('touchend', () => {
+                    setTimeout(() => {
+                        const selectedValue = updateWheelSelection(wheel);
+                        if (selectedValue !== null) {
+                            const currentTime = getCurrentTime();
+                            currentTime[type] = selectedValue;
+                            setCurrentTime(currentTime);
+                            updateDisplayedTime();
+                        }
+                    }, 100);
+                }, { passive: true });
+            }
+            
+            addTouchEvents(hourWheel, 'hour');
+            addTouchEvents(minuteWheel, 'minute');
+            
+            // Initial wheel selection update
+            setTimeout(() => {
+                updateWheelSelection(hourWheel);
+                updateWheelSelection(minuteWheel);
+            }, 100);
+            
+            // AM/PM button events
+            document.getElementById('amBtn').addEventListener('click', () => {
+                const currentTime = getCurrentTime();
+                currentTime.ampm = 'am';
+                setCurrentTime(currentTime);
+                updateAMPMButtons('am');
+                updateDisplayedTime();
+            });
+            
+            document.getElementById('pmBtn').addEventListener('click', () => {
+                const currentTime = getCurrentTime();
+                currentTime.ampm = 'pm';
+                setCurrentTime(currentTime);
+                updateAMPMButtons('pm');
+                updateDisplayedTime();
+            });
+            
+            // Range tab buttons
+            document.getElementById('startTimeTab').addEventListener('click', () => {
+                switchToTimeRange('start');
+            });
+            
+            document.getElementById('endTimeTab').addEventListener('click', () => {
+                switchToTimeRange('end');
+            });
+            
+            // Set Now button
+            document.getElementById('setNowBtn').addEventListener('click', () => {
+                const now = new Date();
+                let hour = now.getHours();
+                const minute = now.getMinutes();
+                const ampm = hour >= 12 ? 'pm' : 'am';
+                
+                if (hour === 0) hour = 12;
+                else if (hour > 12) hour -= 12;
+                
+                const currentTime = getCurrentTime();
+                currentTime.hour = hour;
+                currentTime.minute = minute;
+                currentTime.ampm = ampm;
+                setCurrentTime(currentTime);
+                
+                setWheelPosition('hour', hour);
+                setWheelPosition('minute', minute);
+                updateAMPMButtons(ampm);
+                updateDisplayedTime();
+            });
+            
+            // Confirm button
+            document.getElementById('confirmBtn').addEventListener('click', () => {
+                const result = getSelectedValues();
+                alert('选择确认!\n\n' + JSON.stringify(result, null, 2));
+            });
+        });
+        
+        // Global function for getting selected values
+        function getSelectedValues() {
+            // Convert to 24-hour format for consistent output
+            function to24Hour(timeObj) {
+                let hour = timeObj.hour;
+                if (timeObj.ampm === 'am' && hour === 12) {
+                    hour = 0;
+                } else if (timeObj.ampm === 'pm' && hour !== 12) {
+                    hour += 12;
+                }
+                return `${hour.toString().padStart(2, '0')}:${timeObj.minute.toString().padStart(2, '0')}`;
+            }
+            
+            return {
+                type: "range",
+                values: [
+                    {
+                        time: to24Hour(startTime)
+                    },
+                    {
+                        time: to24Hour(endTime)
+                    }
+                ]
+            };
+        }
+        
+        // Utility function to hide scrollbars on webkit browsers
+        const style = document.createElement('style');
+        style.textContent = `
+            .wheel-container::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>

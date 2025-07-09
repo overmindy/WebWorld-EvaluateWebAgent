@@ -1,0 +1,92 @@
+{
+  "batch_name": "terminal_evaluation_demo",
+  "description": "Interactive terminal agent evaluation of HTML files",
+  "html_files_directory": "eval_data",
+  "output_directory": "terminal_eval_results",
+  "html_files": [
+    {
+      "file_id": "component_page",
+      "file_path": "eval2.html",
+      "tasks": [
+        {
+          "task_id": "task_1",
+          "description": "设置时间为2025年7月16日下午8:00",
+          "success_criteria": [
+            "Button click successful",
+            "Page responds correctly"
+          ],
+          "timeout": 3000000,
+          "max_steps": 25,
+          "metadata": {
+            "difficulty": "medium",
+            "category": "component_interaction"
+          }
+        }
+      ],
+      "metadata": {
+        "file_type": "component",
+        "complexity": "medium",
+        "estimated_time_minutes": 5
+      }
+    },
+    {
+      "file_id": "component_copy_page",
+      "file_path": "eval1.html",
+      "tasks": [
+        {
+          "task_id": "task_1",
+          "description": "设置时间为2d10h40s",
+          "success_criteria": [
+            "Form fields can be filled",
+            "Form submission works"
+          ],
+          "timeout": 240000000,
+          "max_steps": 8,
+          "metadata": {
+            "difficulty": "easy",
+            "category": "form_interaction"
+          }
+        }
+      ],
+      "metadata": {
+        "file_type": "component_copy",
+        "complexity": "low",
+        "estimated_time_minutes": 3
+      }
+    }
+  ],
+  "batch_settings": {
+    "parallel_execution": false,
+    "max_parallel_workers": 1,
+    "continue_on_failure": true,
+    "global_timeout": 1200,
+    "retry_failed_tasks": false,
+    "max_retries": 0,
+    "save_screenshots": true,
+    "save_individual_results": true,
+    "export_formats": ["json", "csv"]
+  },
+  "global_agent_config": {
+    "type": "terminal",
+    "show_screenshot_info": true,
+    "show_help_on_start": true,
+    "single_action_mode": true
+  },
+  "global_browser_config": {
+    "type": "chromium",
+    "headless": false,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "window_position": {
+      "x": 100,
+      "y": 50
+    },
+    "device_scale_factor": 1.5,
+    "slow_mo": 500,
+    "mobile_emulation": {
+      "deviceName": "Pixel 7"
+    }
+  }
+}

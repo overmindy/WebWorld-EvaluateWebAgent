@@ -1,0 +1,103 @@
+{
+  "batch_name": "ui_evaluation_template",
+  "description": "Complete UI evaluation configuration template",
+  "html_files_directory": "eval_data",
+  "output_directory": "ui_eval_results",
+  "html_files": [
+    {
+      "file_id": "component_page",
+      "file_path": "eval1.html",
+      "tasks": [
+        {
+          "task_id": "task_1",
+          "description": "设置时间为14:30",
+          "success_criteria": {
+            "type": "single",
+            "values": [
+              {
+                "time": "14:30"
+              }
+            ]
+          },
+          "timeout": 300000,
+          "max_steps": 10,
+          "metadata": {
+            "difficulty": "medium",
+            "category": "component_interaction"
+          }
+        }
+      ],
+      "metadata": {
+        "file_type": "component",
+        "complexity": "medium",
+        "estimated_time_minutes": 5
+      }
+    },
+    {
+      "file_id": "form_page",
+      "file_path": "eval2.html",
+      "tasks": [
+        {
+          "task_id": "task_1",
+          "description": "设置时间范围为9:00到17:00",
+          "success_criteria": {
+            "type": "range",
+            "values": [
+              {
+                "time": "09:00"
+              },
+              {
+                "time": "17:00"
+              }
+            ]
+          },
+          "timeout": 240000,
+          "max_steps": 8,
+          "metadata": {
+            "difficulty": "easy",
+            "category": "form_interaction"
+          }
+        }
+      ],
+      "metadata": {
+        "file_type": "form",
+        "complexity": "low",
+        "estimated_time_minutes": 3
+      }
+    }
+  ],
+  "batch_settings": {
+    "parallel_execution": false,
+    "max_parallel_workers": 1,
+    "continue_on_failure": true,
+    "global_timeout": 1200,
+    "retry_failed_tasks": false,
+    "max_retries": 0,
+    "save_screenshots": true,
+    "save_individual_results": true,
+    "export_formats": ["json", "csv"]
+  },
+  "global_agent_config": {
+    "type": "uitars",
+    "show_screenshot_info": true,
+    "show_help_on_start": true,
+    "single_action_mode": true
+  },
+  "global_browser_config": {
+    "type": "chromium",
+    "headless": false,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "window_position": {
+      "x": 100,
+      "y": 50
+    },
+    "device_scale_factor": 1.5,
+    "slow_mo": 500,
+    "mobile_emulation": {
+      "deviceName": "Pixel 7"
+    }
+  }
+}
