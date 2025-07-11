@@ -187,3 +187,5 @@ consolidated_configs/
 Eval_dataset/
 examples/
 test/
+tests/
+annotated*results/

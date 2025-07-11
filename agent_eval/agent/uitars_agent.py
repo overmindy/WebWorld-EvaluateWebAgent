@@ -618,25 +618,41 @@ Action: wait()
     def _create_type_command(self, args: Dict[str, Any], positional_args: List[Any]) -> Optional[ActionCommand]:
         """Create type command from parsed arguments."""
         try:
+            text = None
+            replace_mode = True
+
             # Handle positional arguments (simplified format)
             if len(positional_args) >= 1:
                 text = str(positional_args[0])
-                return ActionCommand(
-                    action_type="input_text",
-                    parameters={"text": text},
-                    description=f"Type text: {text[:50]}{'...' if len(text) > 50 else ''}"
-                )
 
             # Handle keyword arguments (UITARS format)
-            if "content" in args:
+            elif "content" in args:
                 text = str(args["content"])
+
+            if text is None:
+                return None
+
+            # Check for delete operations
+            if text.lower() in ['delete', 'backspace']:
                 return ActionCommand(
                     action_type="input_text",
                     parameters={"text": text},
-                    description=f"Type text: {text[:50]}{'...' if len(text) > 50 else ''}"
+                    description=f"Delete operation: {text}"
                 )
 
-            return None
+            # Check for replace mode indicator (optional enhancement)
+            if "replace" in args and args["replace"]:
+                replace_mode = True
+
+            return ActionCommand(
+                action_type="input_text",
+                parameters={
+                    "text": text,
+                    "replace_mode": replace_mode
+                },
+                description=f"Type text: {text[:50]}{'...' if len(text) > 50 else ''}"
+            )
+
         except Exception as e:
             logger.error(f"Error creating type command: {e}")
             return None
@@ -825,6 +841,15 @@ Action: wait()
                 text = uitars_match.group(1)
                 # Handle escape sequences
                 text = text.replace('\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+
+                # Check for delete operations
+                if text.lower() in ['delete', 'backspace']:
+                    return ActionCommand(
+                        action_type="input_text",
+                        parameters={"text": text},
+                        description=f"Delete operation: {text}"
+                    )
+
                 return ActionCommand(
                     action_type="input_text",
                     parameters={"text": text},

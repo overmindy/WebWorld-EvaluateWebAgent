@@ -35,6 +35,7 @@ class EvaluationSession:
         self.error_message = None
         self.final_validation_result = None
         self.task_success = None
+        self.task_score = 0.0  # Partial credit score (0.0-1.0)
 
 
 class EvaluationStep:
@@ -200,7 +201,7 @@ class EvaluationController:
         step = EvaluationStep(step_id)
         
         try:
-            logger.info(f"Executing evaluation step {step_id}")
+            logger.success(f"Executing evaluation step {step_id}")
             
             # Capture screenshot
             screenshot = await self.environment.get_screenshot()
@@ -302,7 +303,15 @@ class EvaluationController:
                     action.parameters["text"],
                     action.parameters.get("element_selector"),
                     action.parameters.get("x"),
-                    action.parameters.get("y")
+                    action.parameters.get("y"),
+                    action.parameters.get("replace_mode", False)
+                )
+
+            elif action.action_type == "set_text":
+                return await self.environment.set_text_at_coordinates(
+                    action.parameters["text"],
+                    action.parameters["x"],
+                    action.parameters["y"]
                 )
 
             elif action.action_type == "navigate":
@@ -429,11 +438,14 @@ class EvaluationController:
             self.current_session.final_validation_result = validation_result
 
             # Update session success based on validation
+            task_score = validation_result.get("task_score", 0.0)
+            self.current_session.task_score = task_score
+
             if validation_result["is_valid"]:
-                logger.info("✅ Final validation: Task completed successfully")
+                logger.info(f"✅ Final validation: Task completed successfully (score: {task_score:.2f})")
                 self.current_session.task_success = True
             else:
-                logger.warning(f"❌ Final validation: Task failed - {validation_result.get('error_message', 'Unknown error')}")
+                logger.warning(f"❌ Final validation: Task failed (score: {task_score:.2f}) - {validation_result.get('error_message', 'Unknown error')}")
                 self.current_session.task_success = False
 
             logger.info(f"Validation details: {validation_result['validation_details']}")
@@ -443,9 +455,14 @@ class EvaluationController:
             self.current_session.final_validation_result = {
                 "is_valid": False,
                 "error_message": f"Validation exception: {str(e)}",
-                "validation_details": "Final validation failed due to exception"
+                "validation_details": "Final validation failed due to exception",
+                "task_score": 0.0,
+                "total_fields": 0,
+                "correct_fields": 0,
+                "field_validation_details": []
             }
             self.current_session.task_success = False
+            self.current_session.task_score = 0.0
 
     def _generate_results(self) -> Dict[str, Any]:
         """Generate evaluation results summary."""
@@ -471,6 +488,7 @@ class EvaluationController:
             "error_message": session.error_message,
             "agent_info": self.agent.get_info() if self.agent else None,
             "task_success": session.task_success,
+            "task_score": session.task_score,
             "final_validation_result": session.final_validation_result,
             "steps": [
                 {

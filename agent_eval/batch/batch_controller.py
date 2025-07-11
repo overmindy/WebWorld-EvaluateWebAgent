@@ -121,7 +121,9 @@ class BatchEvaluationController:
             await self.results_aggregator.save_batch_results(batch_results)
             await self._export_results(batch_results)
 
-            logger.info(f"Batch evaluation completed: {batch_results.success_rate:.1%} success rate")
+            logger.info(f"Batch evaluation completed: {batch_results.success_rate:.1%} success rate, "
+                       f"{batch_results.average_score:.2f} average score, "
+                       f"{batch_results.field_accuracy:.1%} field accuracy")
             return batch_results
 
         except Exception as e:
@@ -391,21 +393,41 @@ class BatchEvaluationController:
             status = result.get('status', 'unknown')
             status_counts[status] = status_counts.get(status, 0) + 1
 
-        # Success rate by HTML file
+        # Success rate and scoring by HTML file
         file_stats = {}
         for result in individual_results:
             file_id = result.get('html_file_id', 'unknown')
             if file_id not in file_stats:
-                file_stats[file_id] = {'total': 0, 'successful': 0}
+                file_stats[file_id] = {
+                    'total': 0,
+                    'successful': 0,
+                    'total_score': 0.0,
+                    'total_fields': 0,
+                    'correct_fields': 0
+                }
 
             file_stats[file_id]['total'] += 1
             # Use task_success from validation results instead of just status
             if result.get('task_success') == True:
                 file_stats[file_id]['successful'] += 1
 
-        # Calculate success rates
+            # Add scoring metrics
+            file_stats[file_id]['total_score'] += result.get('task_score', 0.0)
+            validation_result = result.get('final_validation_result', {})
+            file_stats[file_id]['total_fields'] += validation_result.get('total_fields', 0)
+            file_stats[file_id]['correct_fields'] += validation_result.get('correct_fields', 0)
+
+        # Calculate success rates and scoring metrics
         for file_id, stats in file_stats.items():
             stats['success_rate'] = stats['successful'] / stats['total'] if stats['total'] > 0 else 0
+            stats['average_score'] = stats['total_score'] / stats['total'] if stats['total'] > 0 else 0
+            stats['field_accuracy'] = stats['correct_fields'] / stats['total_fields'] if stats['total_fields'] > 0 else 0
+
+        # Calculate overall scoring metrics
+        overall_average_score = sum(r.get('task_score', 0.0) for r in individual_results) / len(individual_results) if individual_results else 0
+        overall_total_fields = sum(r.get('final_validation_result', {}).get('total_fields', 0) for r in individual_results)
+        overall_correct_fields = sum(r.get('final_validation_result', {}).get('correct_fields', 0) for r in individual_results)
+        overall_field_accuracy = overall_correct_fields / overall_total_fields if overall_total_fields > 0 else 0
 
         return {
             "total_evaluations": len(individual_results),
@@ -414,7 +436,11 @@ class BatchEvaluationController:
             "status_breakdown": status_counts,
             "file_statistics": file_stats,
             # Use task_success from validation results instead of just status
-            "overall_success_rate": sum(1 for r in individual_results if r.get('task_success') == True) / len(individual_results) if individual_results else 0
+            "overall_success_rate": sum(1 for r in individual_results if r.get('task_success') == True) / len(individual_results) if individual_results else 0,
+            "overall_average_score": overall_average_score,
+            "overall_total_fields": overall_total_fields,
+            "overall_correct_fields": overall_correct_fields,
+            "overall_field_accuracy": overall_field_accuracy
         }
 
     async def _export_results(self, batch_results: BatchResults) -> None:

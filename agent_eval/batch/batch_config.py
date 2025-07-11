@@ -243,3 +243,30 @@ class BatchResults:
     def completion_rate(self) -> float:
         """Calculate completion rate."""
         return self.completed_tasks / self.total_tasks if self.total_tasks > 0 else 0.0
+
+    @property
+    def average_score(self) -> float:
+        """Calculate average task score across all completed tasks."""
+        if not self.individual_results:
+            return 0.0
+
+        scores = [r.get('task_score', 0.0) for r in self.individual_results if 'task_score' in r]
+        return sum(scores) / len(scores) if scores else 0.0
+
+    @property
+    def total_fields(self) -> int:
+        """Calculate total number of fields across all tasks."""
+        return sum(r.get('final_validation_result', {}).get('total_fields', 0)
+                  for r in self.individual_results)
+
+    @property
+    def correct_fields(self) -> int:
+        """Calculate total number of correct fields across all tasks."""
+        return sum(r.get('final_validation_result', {}).get('correct_fields', 0)
+                  for r in self.individual_results)
+
+    @property
+    def field_accuracy(self) -> float:
+        """Calculate overall field-level accuracy."""
+        total = self.total_fields
+        return self.correct_fields / total if total > 0 else 0.0

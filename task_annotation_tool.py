@@ -300,7 +300,7 @@ class TaskAnnotationTool:
             criteria_type = criteria_map.get(criteria_type, "single")
             
             # Get timeout and max_steps
-            timeout = input("Timeout (ms) [150]: ").strip() or "150"
+            timeout = input("Timeout (ms) [750]: ").strip() or "750"
             max_steps = input("Max steps [30]: ").strip() or "30"
             
             # Get difficulty and category

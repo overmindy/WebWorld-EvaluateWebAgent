@@ -85,7 +85,11 @@ class BatchResultsAggregator:
                 "successful_tasks": batch_results.successful_tasks,
                 "failed_tasks": batch_results.failed_tasks,
                 "success_rate": batch_results.success_rate,
-                "completion_rate": batch_results.completion_rate
+                "completion_rate": batch_results.completion_rate,
+                "average_score": batch_results.average_score,
+                "total_fields": batch_results.total_fields,
+                "correct_fields": batch_results.correct_fields,
+                "field_accuracy": batch_results.field_accuracy
             },
             "summary_statistics": batch_results.summary_stats,
             "individual_results": batch_results.individual_results,
@@ -115,7 +119,11 @@ class BatchResultsAggregator:
             ["Successful Tasks", batch_results.successful_tasks],
             ["Failed Tasks", batch_results.failed_tasks],
             ["Success Rate", f"{batch_results.success_rate:.2%}"],
-            ["Completion Rate", f"{batch_results.completion_rate:.2%}"]
+            ["Completion Rate", f"{batch_results.completion_rate:.2%}"],
+            ["Average Score", f"{batch_results.average_score:.3f}"],
+            ["Total Fields", batch_results.total_fields],
+            ["Correct Fields", batch_results.correct_fields],
+            ["Field Accuracy", f"{batch_results.field_accuracy:.2%}"]
         ]
         
         with open(summary_file, 'w', newline='', encoding='utf-8') as f:
@@ -170,7 +178,8 @@ class BatchResultsAggregator:
                 summary_data = {
                     "Metric": ["Batch ID", "Batch Name", "Start Time", "End Time", "Duration (seconds)",
                               "Total Tasks", "Completed Tasks", "Successful Tasks", "Failed Tasks",
-                              "Success Rate", "Completion Rate"],
+                              "Success Rate", "Completion Rate", "Average Score", "Total Fields",
+                              "Correct Fields", "Field Accuracy"],
                     "Value": [
                         batch_results.batch_id,
                         batch_results.batch_name,
@@ -182,7 +191,11 @@ class BatchResultsAggregator:
                         batch_results.successful_tasks,
                         batch_results.failed_tasks,
                         f"{batch_results.success_rate:.2%}",
-                        f"{batch_results.completion_rate:.2%}"
+                        f"{batch_results.completion_rate:.2%}",
+                        f"{batch_results.average_score:.3f}",
+                        batch_results.total_fields,
+                        batch_results.correct_fields,
+                        f"{batch_results.field_accuracy:.2%}"
                     ]
                 }
                 
@@ -402,7 +415,7 @@ class BatchResultsAggregator:
             return "<p>No individual results available.</p>"
 
         html = "<table>"
-        html += "<tr><th>HTML File</th><th>Task</th><th>Status</th><th>Duration</th><th>Steps</th><th>Success Rate</th></tr>"
+        html += "<tr><th>HTML File</th><th>Task</th><th>Status</th><th>Duration</th><th>Steps</th><th>Success Rate</th><th>Task Score</th><th>Field Accuracy</th></tr>"
 
         for result in results:
             status = result.get('status', 'unknown')
@@ -411,6 +424,13 @@ class BatchResultsAggregator:
             duration = result.get('duration_seconds', 0)
             steps = result.get('total_steps', 0)
             success_rate = result.get('success_rate', 0)
+            task_score = result.get('task_score', 0.0)
+
+            # Calculate field accuracy for this task
+            validation_result = result.get('final_validation_result', {})
+            total_fields = validation_result.get('total_fields', 0)
+            correct_fields = validation_result.get('correct_fields', 0)
+            field_accuracy = correct_fields / total_fields if total_fields > 0 else 0.0
 
             html += f"""
             <tr>
@@ -420,6 +440,8 @@ class BatchResultsAggregator:
                 <td>{duration:.1f}s</td>
                 <td>{steps}</td>
                 <td>{success_rate:.1%}</td>
+                <td>{task_score:.3f}</td>
+                <td>{field_accuracy:.1%}</td>
             </tr>
             """
 

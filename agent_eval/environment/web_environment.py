@@ -247,9 +247,9 @@ class WebEnvironment:
             await self.page.mouse.wheel(delta_x, delta_y)
 
             if x is not None and y is not None:
-                logger.debug(f"Scrolled {direction} by {amount} pixels from coordinates ({x}, {y}) (dx={dx}, dy={dy})")
+                logger.success(f"Scrolled {direction} by {amount} pixels from coordinates ({x}, {y}) (dx={dx}, dy={dy})")
             else:
-                logger.debug(f"Scrolled {direction} by {amount} pixels (dx={dx}, dy={dy})")
+                logger.success(f"Scrolled {direction} by {amount} pixels (dx={dx}, dy={dy})")
             return True
 
         except Exception as e:
@@ -279,7 +279,7 @@ class WebEnvironment:
             actual_y = y / device_scale_factor
 
             await self.page.mouse.click(actual_x, actual_y)
-            logger.debug(f"Clicked at screenshot coordinates ({x}, {y}) -> browser coordinates ({actual_x}, {actual_y})")
+            logger.success(f"Clicked at screenshot coordinates ({x}, {y}) -> browser coordinates ({actual_x}, {actual_y})")
             return True
 
         except Exception as e:
@@ -316,7 +316,7 @@ class WebEnvironment:
             await self.page.mouse.down()
             await self.page.mouse.move(actual_end_x, actual_end_y)
             await self.page.mouse.up()
-            logger.debug(f"Dragged from screenshot coordinates ({start_x}, {start_y}) to ({end_x}, {end_y}) -> browser coordinates ({actual_start_x}, {actual_start_y}) to ({actual_end_x}, {actual_end_y})")
+            logger.success(f"Dragged from screenshot coordinates ({start_x}, {start_y}) to ({end_x}, {end_y}) -> browser coordinates ({actual_start_x}, {actual_start_y}) to ({actual_end_x}, {actual_end_y})")
             return True
 
         except Exception as e:
@@ -344,15 +344,19 @@ class WebEnvironment:
             return False
 
     async def input_text(self, text: str, element_selector: Optional[str] = None,
-                        x: Optional[int] = None, y: Optional[int] = None) -> bool:
+                        x: Optional[int] = None, y: Optional[int] = None,
+                        replace_mode: bool = False) -> bool:
         """
         Type text into form fields using selector or coordinates.
 
         Args:
-            text: Text to input
+            text: Text to input. Special values:
+                  - 'delete' or 'backspace': Perform delete operation
+                  - Any other text: Input the text
             element_selector: CSS selector for target element (optional)
             x: X coordinate to click before typing (optional)
             y: Y coordinate to click before typing (optional)
+            replace_mode: If True, replace existing text instead of appending
 
         Returns:
             bool: True if input successful, False otherwise
@@ -362,12 +366,21 @@ class WebEnvironment:
             return False
 
         try:
+            # Handle delete operations
+            if text.lower() in ['delete', 'backspace']:
+                return await self._handle_delete_operation(element_selector, x, y)
+
             if element_selector:
                 # Use element selector
                 element = await self.page.wait_for_selector(element_selector, timeout=5000)
                 if element:
                     await element.click()
-                    await element.fill(text)
+                    if replace_mode:
+                        # Clear existing content and set new text
+                        await element.fill(text)
+                    else:
+                        # Append to existing content
+                        await element.type(text)
                     logger.debug(f"Input text to element '{element_selector}': {text[:50]}...")
                 else:
                     logger.error(f"Element not found: {element_selector}")
@@ -378,18 +391,94 @@ class WebEnvironment:
                 actual_x = x / device_scale_factor
                 actual_y = y / device_scale_factor
                 await self.page.mouse.click(actual_x, actual_y)
-                await self.page.keyboard.type(text)
-                logger.debug(f"Input text at screenshot coordinates ({x}, {y}) -> browser coordinates ({actual_x}, {actual_y}): {text[:50]}...")
+
+                if replace_mode:
+                    # Select all text and replace
+                    await self.page.keyboard.press("Control+a")
+                    await self.page.keyboard.type(text)
+                else:
+                    # Append to existing content
+                    await self.page.keyboard.type(text)
+                logger.success(f"Input text at screenshot coordinates ({x}, {y}) -> browser coordinates ({actual_x}, {actual_y}): {text[:50]}...")
             else:
                 # Type at current focus
-                await self.page.keyboard.type(text)
-                logger.debug(f"Input text at current focus: {text[:50]}...")
+                if replace_mode:
+                    # Select all text and replace
+                    await self.page.keyboard.press("Control+a")
+                    await self.page.keyboard.type(text)
+                else:
+                    # Append to existing content
+                    await self.page.keyboard.type(text)
+                logger.success(f"Input text at current focus: {text[:50]}...")
 
             return True
 
         except Exception as e:
             logger.error(f"Failed to input text: {e}")
             return False
+
+    async def _handle_delete_operation(self, element_selector: Optional[str] = None,
+                                     x: Optional[int] = None, y: Optional[int] = None) -> bool:
+        """
+        Handle delete/backspace operations.
+
+        Args:
+            element_selector: CSS selector for target element (optional)
+            x: X coordinate to click before deleting (optional)
+            y: Y coordinate to click before deleting (optional)
+
+        Returns:
+            bool: True if delete successful, False otherwise
+        """
+        try:
+            if element_selector:
+                # Use element selector
+                element = await self.page.wait_for_selector(element_selector, timeout=5000)
+                if element:
+                    await element.click()
+                    # Select all and delete
+                    await self.page.keyboard.press("Control+a")
+                    await self.page.keyboard.press("Delete")
+                    logger.debug(f"Deleted content in element '{element_selector}'")
+                else:
+                    logger.error(f"Element not found: {element_selector}")
+                    return False
+            elif x is not None and y is not None:
+                # Use coordinates
+                device_scale_factor = self.browser_config.get("device_scale_factor", 1.0)
+                actual_x = x / device_scale_factor
+                actual_y = y / device_scale_factor
+                await self.page.mouse.click(actual_x, actual_y)
+                # Select all and delete
+                await self.page.keyboard.press("Control+a")
+                await self.page.keyboard.press("Delete")
+                logger.success(f"Deleted content at coordinates ({x}, {y})")
+            else:
+                # Delete at current focus
+                await self.page.keyboard.press("Control+a")
+                await self.page.keyboard.press("Delete")
+                logger.success("Deleted content at current focus")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to delete content: {e}")
+            return False
+
+    async def set_text_at_coordinates(self, text: str, x: int, y: int) -> bool:
+        """
+        Set text directly at specified coordinates, replacing any existing content.
+        This is a convenience method that uses replace_mode=True.
+
+        Args:
+            text: Text to set
+            x: X coordinate (screenshot coordinates)
+            y: Y coordinate (screenshot coordinates)
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        return await self.input_text(text, x=x, y=y, replace_mode=True)
 
     async def execute_javascript(self, javascript_code: str) -> Any:
         """
