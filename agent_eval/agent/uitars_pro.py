@@ -96,7 +96,7 @@ def escape_single_quotes(text: str) -> str:
     return re.sub(pattern, r"\\'", text)
 
 
-class UITARSAgent(BaseAgent):
+class UITARSProAgent(BaseAgent):
     """
     UITARS agent implementation that uses thinking/reasoning approach.
     
@@ -133,8 +133,8 @@ class UITARSAgent(BaseAgent):
         self.action_space = """
 click(start_box='<|box_start|>(x1,y1)<|box_end|>')
 drag(start_box='<|box_start|>(x1,y1)<|box_end|>', end_box='<|box_start|>(x3,y3)<|box_end|>')
-type(content='') #If you want to submit your input, use "\\n" at the end of `content`.
-scroll(start_box='<|box_start|>(x1,y1)<|box_end|>', direction='down or up or right or left')
+type(content='', start_box='<|box_start|>(x1,y1)<|box_end|>') #If you want to submit your input, use "\\n" at the end of `content`.
+scroll(start_box='<|box_start|>(x1,y1)<|box_end|>', distance='<|box_start|>(dx,dy)<|box_end|>') #Scroll at the specified point with distance in units of 10, supports positive and negative values.
 finished(content='xxx') # Use escape characters \\', \\", and \\n in content part to ensure we can parse the content in normal python string format.
 """
 
@@ -143,7 +143,6 @@ finished(content='xxx') # Use escape characters \\', \\", and \\n in content par
 
 ## Output Format
 ```
-Thought: ...
 Action: ...
 ```
 
@@ -151,8 +150,6 @@ Action: ...
 {action_space}
 
 ## Note
-- Use {language} in `Thought` part.
-- Write a small plan and finally summarize your next action (with its target element) in one sentence in `Thought` part.
 - Output absolute coordinates directly based on the screenshot.
 
 ## User Instruction
@@ -174,6 +171,16 @@ Action: ...
         """
         self.step_count += 1
         logger.success(f"UITARS agent processing step {self.step_count}")
+        
+        #for quickly test
+        # return AgentResponse(
+        #     actions=[],
+        #     reasoning="",
+        #     task_complete=True,
+        #     needs_more_info=False,
+        #     error_message=None
+        # )
+
         try:
             # Check for cancellation before processing
             if asyncio.current_task().cancelled():
@@ -539,17 +546,20 @@ Action: wait()
     def _preprocess_type_action(self, action_str: str) -> str:
         """Preprocess type action to handle content parameter properly."""
         try:
-            # Extract content from type(content='...') and escape quotes
-            def escape_quotes(match):
-                content = match.group(1)
-                return content
+            # For new format with start_box, just return as-is for AST parsing
+            if "start_box" in action_str:
+                return action_str
 
+            # For old format, extract content and escape quotes
             pattern = r"type\(content='(.*?)'\)"
-            content = re.sub(pattern, escape_quotes, action_str)
+            match = re.search(pattern, action_str)
+            if match:
+                content = match.group(1)
+                # Escape single quotes in content
+                content = escape_single_quotes(content)
+                return f"type(content='{content}')"
 
-            # Escape single quotes in content
-            content = escape_single_quotes(content)
-            return f"type(content='{content}')"
+            return action_str
         except Exception as e:
             logger.debug(f"Error preprocessing type action: {e}")
             return action_str
@@ -630,65 +640,107 @@ Action: wait()
             return None
 
     def _create_type_command(self, args: Dict[str, Any], positional_args: List[Any]) -> Optional[ActionCommand]:
-        """Create type command from parsed arguments."""
+        """Create type command from parsed arguments with new start_box format."""
         try:
             text = None
+            x, y = None, None
             replace_mode = True
 
             # Handle positional arguments (simplified format)
             if len(positional_args) >= 1:
                 text = str(positional_args[0])
 
-            # Handle keyword arguments (UITARS format)
+            # Handle keyword arguments (new UITARS format with start_box)
             elif "content" in args:
                 text = str(args["content"])
+
+                # Extract coordinates from start_box if provided
+                if "start_box" in args:
+                    coords = self._extract_coordinates_from_box(args["start_box"])
+                    if coords:
+                        x, y = coords[0], coords[1]
 
             if text is None:
                 return None
 
             # Check for delete operations
             if text.lower() in ['delete', 'backspace']:
+                parameters = {"text": text}
+                if x is not None and y is not None:
+                    parameters.update({"x": x, "y": y})
+                    description = f"Delete operation: {text} at coordinates ({x}, {y})"
+                else:
+                    description = f"Delete operation: {text}"
+
                 return ActionCommand(
                     action_type="input_text",
-                    parameters={"text": text},
-                    description=f"Delete operation: {text}"
+                    parameters=parameters,
+                    description=description
                 )
 
             # Check for replace mode indicator (optional enhancement)
             if "replace" in args and args["replace"]:
                 replace_mode = True
 
+            # Build parameters
+            parameters = {
+                "text": text,
+                "replace_mode": replace_mode
+            }
+
+            # Add coordinates if provided
+            if x is not None and y is not None:
+                parameters.update({"x": x, "y": y})
+                description = f"Type text: {text[:50]}{'...' if len(text) > 50 else ''} at coordinates ({x}, {y})"
+            else:
+                description = f"Type text: {text[:50]}{'...' if len(text) > 50 else ''}"
+
             return ActionCommand(
                 action_type="input_text",
-                parameters={
-                    "text": text,
-                    "replace_mode": replace_mode
-                },
-                description=f"Type text: {text[:50]}{'...' if len(text) > 50 else ''}"
+                parameters=parameters,
+                description=description
             )
 
         except Exception as e:
             logger.error(f"Error creating type command: {e}")
             return None
 
-    def _create_scroll_command(self, args: Dict[str, Any], positional_args: List[Any]) -> Optional[ActionCommand]:
-        """Create scroll command from parsed arguments."""
+    def _create_scroll_command(self, args: Dict[str, Any], positional_args: List[Any] = None) -> Optional[ActionCommand]:
+        """Create scroll command from parsed arguments with new distance format."""
         try:
-            direction = None
             x, y = None, None
+            dx, dy = 0, 0
 
-            # Handle positional arguments (simplified format)
-            # Support: scroll(direction) or scroll(x, y, direction)
-            if len(positional_args) >= 1:
-                if len(positional_args) >= 3:
-                    # Format: scroll(x, y, direction)
-                    x, y = int(positional_args[0]), int(positional_args[1])
-                    direction = str(positional_args[2]).lower()
-                else:
-                    # Format: scroll(direction)
-                    direction = str(positional_args[0]).lower()
+            # Handle keyword arguments (new UITARS format with distance)
+            if "start_box" in args and "distance" in args:
+                # Extract start coordinates
+                coords = self._extract_coordinates_from_box(args["start_box"])
+                if coords:
+                    x, y = coords[0], coords[1]
 
-            # Handle keyword arguments (UITARS format)
+                # Extract distance (dx, dy)
+                distance_coords = self._extract_coordinates_from_box(args["distance"])
+                if distance_coords:
+                    dx, dy = distance_coords[0], distance_coords[1]
+
+                parameters = {
+                    "direction": "custom",  # Use custom direction for distance-based scrolling
+                    "amount": max(abs(dx), abs(dy)),  # Use the larger distance as amount
+                    "dx": dx,
+                    "dy": dy,
+                    "x": x,
+                    "y": y
+                }
+
+                description = f"Scroll by distance ({dx}, {dy}) from coordinates ({x}, {y})"
+
+                return ActionCommand(
+                    action_type="scroll",
+                    parameters=parameters,
+                    description=description
+                )
+
+            # Fallback: Handle old direction-based format for compatibility
             elif "direction" in args:
                 direction = str(args["direction"]).lower()
 
@@ -700,27 +752,27 @@ Action: wait()
                     if coords:
                         x, y = coords[0], coords[1]
 
-            if direction in ["down", "up", "left", "right"]:
-                parameters = {
-                    "direction": direction,
-                    "amount": 100,
-                    "dx": 0,
-                    "dy": 0
-                }
+                if direction in ["down", "up", "left", "right"]:
+                    parameters = {
+                        "direction": direction,
+                        "amount": 100,
+                        "dx": 0,
+                        "dy": 0
+                    }
 
-                # Add coordinates if provided
-                if x is not None and y is not None:
-                    parameters["x"] = x
-                    parameters["y"] = y
-                    description = f"Scroll {direction} from coordinates ({x}, {y})"
-                else:
-                    description = f"Scroll {direction}"
+                    # Add coordinates if provided
+                    if x is not None and y is not None:
+                        parameters["x"] = x
+                        parameters["y"] = y
+                        description = f"Scroll {direction} from coordinates ({x}, {y})"
+                    else:
+                        description = f"Scroll {direction}"
 
-                return ActionCommand(
-                    action_type="scroll",
-                    parameters=parameters,
-                    description=description
-                )
+                    return ActionCommand(
+                        action_type="scroll",
+                        parameters=parameters,
+                        description=description
+                    )
 
             return None
         except Exception as e:
@@ -847,10 +899,35 @@ Action: wait()
         return None
 
     def _parse_type_action(self, action_text: str) -> Optional[ActionCommand]:
-        """Parse type action."""
+        """Parse type action with new start_box format."""
         try:
-            # First try UITARS format: type(content='text')
-            uitars_match = re.search(r'type\(content=[\'"]([^\'"]*)[\'"]', action_text)
+            # First try new format: type(content='text', start_box='(x,y)')
+            # More flexible regex to handle various quote combinations
+            new_format_match = re.search(r'type\(content=[\'"]([^\'\"]*)[\'"],\s*start_box=[\'"]?\(([\'"]?-?\d+),\s*(-?\d+[\'"]?)\)[\'"]?\)', action_text)
+            if new_format_match:
+                text = new_format_match.group(1)
+                x = int(new_format_match.group(2).strip('\'"'))
+                y = int(new_format_match.group(3).strip('\'"'))
+
+                # Handle escape sequences
+                text = text.replace('\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+
+                # Check for delete operations
+                if text.lower() in ['delete', 'backspace']:
+                    return ActionCommand(
+                        action_type="input_text",
+                        parameters={"text": text, "x": x, "y": y},
+                        description=f"Delete operation: {text} at coordinates ({x}, {y})"
+                    )
+
+                return ActionCommand(
+                    action_type="input_text",
+                    parameters={"text": text, "x": x, "y": y, "replace_mode": True},
+                    description=f"Type text: {text[:50]}{'...' if len(text) > 50 else ''} at coordinates ({x}, {y})"
+                )
+
+            # Fallback: try old UITARS format: type(content='text')
+            uitars_match = re.search(r'type\(content=[\'"]([^\'\"]*)[\'"](?:\)|,)', action_text)
             if uitars_match:
                 text = uitars_match.group(1)
                 # Handle escape sequences
@@ -866,7 +943,7 @@ Action: wait()
 
                 return ActionCommand(
                     action_type="input_text",
-                    parameters={"text": text},
+                    parameters={"text": text, "replace_mode": True},
                     description=f"Type text: {text[:50]}{'...' if len(text) > 50 else ''}"
                 )
 
@@ -876,7 +953,7 @@ Action: wait()
                 text = match.group(1).strip('\'"')
                 return ActionCommand(
                     action_type="input_text",
-                    parameters={"text": text},
+                    parameters={"text": text, "replace_mode": True},
                     description=f"Type text: {text[:50]}{'...' if len(text) > 50 else ''}"
                 )
         except Exception as e:
@@ -884,8 +961,30 @@ Action: wait()
         return None
 
     def _parse_scroll_action(self, action_text: str) -> Optional[ActionCommand]:
-        """Parse scroll action."""
+        """Parse scroll action with new distance format."""
         try:
+            # Handle new format: scroll(start_box='(x,y)', distance='(dx,dy)')
+            new_format_match = re.search(r'scroll\(start_box=[\'"]?\(([\'"]?-?\d+),\s*(-?\d+[\'"]?)\)[\'"]?,\s*distance=[\'"]?\(([\'"]?-?\d+),\s*(-?\d+[\'"]?)\)[\'"]?\)', action_text)
+            if new_format_match:
+                x = int(new_format_match.group(1).strip('\'"'))
+                y = int(new_format_match.group(2).strip('\'"'))
+                dx = int(new_format_match.group(3).strip('\'"'))
+                dy = int(new_format_match.group(4).strip('\'"'))
+
+                return ActionCommand(
+                    action_type="scroll",
+                    parameters={
+                        "direction": "custom",  # Use custom direction for distance-based scrolling
+                        "amount": max(abs(dx), abs(dy)),  # Use the larger distance as amount
+                        "dx": dx,
+                        "dy": dy,
+                        "x": x,
+                        "y": y
+                    },
+                    description=f"Scroll by distance ({dx}, {dy}) from coordinates ({x}, {y})"
+                )
+
+            # Fallback: Handle old direction-based format for compatibility
             # Handle coordinate-based scroll: scroll(x=100, y=200, direction='down')
             coord_match = re.search(r'scroll\(x=(\d+),\s*y=(\d+),\s*direction=[\'"]([^\'"]+)[\'"]', action_text)
             if coord_match:
@@ -940,32 +1039,7 @@ Action: wait()
                         description=f"Scroll {direction} from coordinates ({x}, {y})"
                     )
 
-            # Extract direction from scroll(direction) format
-            match = re.search(r'scroll\(([^)]+)\)', action_text)
-            if match:
-                direction = match.group(1).strip('\'"').lower()
-
-                # Map directions to our framework
-                direction_map = {
-                    "down": "down",
-                    "up": "up",
-                    "left": "left",
-                    "right": "right"
-                }
-
-                if direction in direction_map:
-                    return ActionCommand(
-                        action_type="scroll",
-                        parameters={
-                            "direction": direction_map[direction],
-                            "amount": 100,  # Default scroll amount
-                            "dx": 0,
-                            "dy": 0
-                        },
-                        description=f"Scroll {direction}"
-                    )
-
-            # Also handle UITARS format: scroll(start_box='(x,y)', direction='down')
+            # Also handle old UITARS format: scroll(start_box='(x,y)', direction='down')
             uitars_match = re.search(r'scroll\(start_box=[\'"]?\(([\'"]?\d+),\s*(\d+[\'"]?)\)[\'"]?,\s*direction=[\'"]([^\'"]+)[\'"]', action_text)
             if uitars_match:
                 x = int(uitars_match.group(1).strip('\'"'))

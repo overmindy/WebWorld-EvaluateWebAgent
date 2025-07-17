@@ -18,6 +18,8 @@ from ..agent.base_agent import BaseAgent, AgentResponse, ActionCommand
 from ..agent.human_agent import HumanAgent
 from ..agent.terminal_agent import TerminalAgent
 from ..agent.uitars_agent import UITARSAgent
+from ..agent.uitars_pro import UITARSProAgent
+from ..agent.text_agent import TextAgent
 from ..validation.task_completion_validator import TaskCompletionValidator
 
 
@@ -87,44 +89,70 @@ class EvaluationController:
         self.environment: Optional[WebEnvironment] = None
         self.agent: Optional[BaseAgent] = None
         self.task_validator: Optional[TaskCompletionValidator] = None
+        self._cancelled = False
+        self._log_handler_id = None  # For log handler cleanup
         
         # Setup logging
         self._setup_logging()
         
         logger.info("EvaluationController initialized")
-    
+
+    def cancel_evaluation(self) -> None:
+        """Cancel the current evaluation."""
+        self._cancelled = True
+        logger.info("Evaluation cancellation requested")
+
     def _setup_logging(self) -> None:
         """Setup logging configuration."""
         log_config = self.config.get("logging", {})
         log_dir = Path(log_config.get("log_dir", "logs"))
         log_dir.mkdir(exist_ok=True)
-        
-        # Configure loguru
+
+
+
+        # Configure loguru - only add handler if console output is enabled
         if log_config.get("console_output", True):
-            logger.add(
-                log_dir / log_config.get("log_file", "evaluation.log"),
+            log_file = log_dir / log_config.get("log_file", "evaluation.log")
+
+            # Add handler and store ID for later removal
+            self._log_handler_id = logger.add(
+                log_file,
                 level=log_config.get("level", "INFO"),
                 rotation="10 MB",
-                retention="7 days"
+                retention="7 days",
+                format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"
             )
     
-    async def start_evaluation(self, task_description: str, 
+    async def start_evaluation(self, task_description: str,
                              target_url: Optional[str] = None,
-                             agent_config: Optional[Dict[str, Any]] = None) -> str:
+                             agent_config: Optional[Dict[str, Any]] = None,
+                             run_info: Optional[Dict[str, Any]] = None) -> str:
         """
         Start a new evaluation session.
-        
+
         Args:
             task_description: Description of the task to perform
             target_url: URL to navigate to (optional)
             agent_config: Agent-specific configuration (optional)
-            
+            run_info: Run information for unique session ID generation (optional)
+                     Expected keys: 'task_id', 'run_number'
+
         Returns:
             str: Session ID
         """
         try:
-            # Generate session ID
-            session_id = f"eval_{int(time.time())}"
+            # Generate unique session ID
+            import random
+            timestamp = int(time.time())
+            random_suffix = random.randint(1000, 9999)
+
+            if run_info and 'task_id' in run_info and 'run_number' in run_info:
+                # Include task and run info for uniqueness in multiple runs
+                task_id_safe = run_info['task_id'].replace(':', '_').replace('/', '_')
+                session_id = f"eval_{timestamp}_{random_suffix}_{task_id_safe}_run{run_info['run_number']}"
+            else:
+                # Fallback for single runs or when run_info is not provided
+                session_id = f"eval_{timestamp}_{random_suffix}"
             
             # Create session
             session_config = self.config.copy()
@@ -156,8 +184,15 @@ class EvaluationController:
                 self.agent = TerminalAgent(session_config.get("agent", {}))
             elif agent_type == "uitars":
                 self.agent = UITARSAgent(session_config.get("agent", {}))
+            elif agent_type == "uitars_pro":
+                self.agent = UITARSProAgent(session_config.get("agent", {}))
+            elif agent_type == "text":
+                self.agent = TextAgent(session_config.get("agent", {}))
+                # Set WebEnvironment reference for text extraction
+                if hasattr(self.agent, 'set_web_environment'):
+                    self.agent.set_web_environment(self.environment)
             else:
-                raise ValueError(f"Unsupported agent type: {agent_type}. Supported types: 'human', 'terminal', 'uitars'")
+                raise ValueError(f"Unsupported agent type: {agent_type}. Supported types: 'human', 'terminal', 'uitars', 'uitars_pro', 'text'")
             
             await self.agent.reset()
 
@@ -202,12 +237,17 @@ class EvaluationController:
         
         try:
             logger.success(f"Executing evaluation step {step_id}")
-            
+
+            # Check for cancellation before proceeding
+            if hasattr(self, '_cancelled') and self._cancelled:
+                logger.info("Evaluation step cancelled")
+                return False
+
             # Capture screenshot
             screenshot = await self.environment.get_screenshot()
             if not screenshot:
                 raise Exception("Failed to capture screenshot")
-            
+
             # Save screenshot if configured
             if self.config.get("evaluation", {}).get("save_screenshots", True):
                 screenshot_dir = Path(self.config.get("evaluation", {}).get("screenshot_dir", "logs/screenshots"))
@@ -215,22 +255,55 @@ class EvaluationController:
                 screenshot_path = screenshot_dir / f"{self.current_session.session_id}_step_{step_id}.png"
                 screenshot.save(screenshot_path)
                 step.screenshot_path = str(screenshot_path)
-            
-            # Get agent prediction
+
+            # Check for cancellation before agent prediction
+            if hasattr(self, '_cancelled') and self._cancelled:
+                logger.info("Evaluation cancelled before agent prediction")
+                return False
+
+            # Get agent prediction (can be cancelled)
             task_description = self.current_session.config.get("current_task_description", "")
-            agent_response = await self.agent.predict(screenshot, task_description)
+            try:
+                agent_response = await self.agent.predict(screenshot, task_description)
+            except asyncio.CancelledError:
+                logger.info("Agent prediction cancelled")
+                return False
             step.agent_response = agent_response
             
             # Check if task is complete
             if agent_response.task_complete:
                 logger.info("Agent indicates task is complete")
+
+                # Log completion action to indicate intentional task completion
+                completion_action = {
+                    "action": {
+                        "action_type": "finish",
+                        "parameters": {},
+                        "description": "Task completed by agent",
+                        "confidence": 1.0
+                    },
+                    "success": True
+                }
+                step.actions_executed.append(completion_action)
+                step.success = True
                 step.duration = time.time() - step_start_time
                 self.current_session.steps.append(step)
                 return False  # End evaluation
             
             # Execute actions through normal flow
+            task_finished_by_action = False
             if agent_response.actions:
                 for action in agent_response.actions:
+                    # Check if this is a finish action
+                    if action.action_type == "finish":
+                        logger.info("Agent sent finish action - task completed")
+                        step.actions_executed.append({
+                            "action": action.model_dump(),
+                            "success": True
+                        })
+                        task_finished_by_action = True
+                        break
+
                     action_success = await self._execute_action(action)
                     step.actions_executed.append({
                         "action": action.model_dump(),
@@ -247,13 +320,17 @@ class EvaluationController:
             step.success = True
             step.duration = time.time() - step_start_time
             self.current_session.steps.append(step)
-            
+
+            # End evaluation if finish action was executed
+            if task_finished_by_action:
+                return False
+
             # Check step limits
-            max_steps = self.config.get("evaluation", {}).get("max_steps", 50)
+            max_steps = self.config.get("evaluation", {}).get("max_steps", 30)
             if len(self.current_session.steps) >= max_steps:
                 logger.info(f"Reached maximum steps ({max_steps})")
                 return False
-            
+
             return True
             
         except Exception as e:
@@ -333,7 +410,8 @@ class EvaluationController:
 
     async def run_full_evaluation(self, task_description: str,
                                 target_url: Optional[str] = None,
-                                agent_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                                agent_config: Optional[Dict[str, Any]] = None,
+                                run_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Run a complete evaluation session.
 
@@ -341,16 +419,17 @@ class EvaluationController:
             task_description: Description of the task to perform
             target_url: URL to navigate to (optional)
             agent_config: Agent-specific configuration (optional)
+            run_info: Run information for unique session ID generation (optional)
 
         Returns:
             Dict[str, Any]: Evaluation results
         """
         try:
             # Start evaluation
-            session_id = await self.start_evaluation(task_description, target_url, agent_config)
+            session_id = await self.start_evaluation(task_description, target_url, agent_config, run_info)
 
             # Run evaluation steps
-            step_timeout = self.config.get("evaluation", {}).get("step_timeout", 120)
+            step_timeout = self.config.get("evaluation", {}).get("step_timeout", 150)
 
             while self.current_session.status == "running":
                 try:
@@ -445,7 +524,7 @@ class EvaluationController:
                 logger.info(f"✅ Final validation: Task completed successfully (score: {task_score:.2f})")
                 self.current_session.task_success = True
             else:
-                logger.warning(f"❌ Final validation: Task failed (score: {task_score:.2f}) - {validation_result.get('error_message', 'Unknown error')}")
+                logger.info(f"❌ Final validation: Task failed (score: {task_score:.2f}) - {validation_result.get('error_message', 'Unknown error')}")
                 self.current_session.task_success = False
 
             logger.info(f"Validation details: {validation_result['validation_details']}")
@@ -497,16 +576,29 @@ class EvaluationController:
                     "success": step.success,
                     "duration": step.duration,
                     "actions_count": len(step.actions_executed),
+                    "actions_executed": step.actions_executed,  # Include full action details
                     "error_message": step.error_message,
-                    "validation_result": getattr(step, 'validation_result', None)
+                    "validation_result": getattr(step, 'validation_result', None),
+                    # Include complete agent response data
+                    "agent_response": {
+                        "reasoning": step.agent_response.reasoning if step.agent_response else None,
+                        "task_complete": step.agent_response.task_complete if step.agent_response else None,
+                        "needs_more_info": step.agent_response.needs_more_info if step.agent_response else None,
+                        "error_message": step.agent_response.error_message if step.agent_response else None
+                    } if step.agent_response else None
                 }
                 for step in session.steps
             ]
         }
 
     async def _save_results(self) -> None:
-        """Save evaluation results to file."""
+        """Save evaluation results to file (only if enabled in config)."""
         if not self.current_session:
+            return
+
+        # Check if individual result saving is disabled (to avoid duplication)
+        if not self.config.get("logging", {}).get("save_individual_session_results", True):
+            logger.debug("Individual session result saving disabled")
             return
 
         try:
@@ -532,6 +624,15 @@ class EvaluationController:
             if self.agent:
                 await self.agent.reset()
                 self.agent = None
+
+            # Remove log handler to prevent duplication
+            if hasattr(self, '_log_handler_id') and self._log_handler_id is not None:
+                try:
+                    logger.remove(self._log_handler_id)
+                    self._log_handler_id = None
+                except Exception as log_error:
+                    # Don't fail cleanup if log handler removal fails
+                    pass
 
             self.current_session = None
             logger.info("Cleanup completed")

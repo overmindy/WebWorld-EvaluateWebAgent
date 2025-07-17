@@ -186,6 +186,9 @@ consolidated_configs/
 # Large dataset files (uncomment if needed)
 Eval_dataset/
 examples/
-test/
-tests/
+test*/
 annotated*results/
+output/
+references/
+*.txt
+docs/

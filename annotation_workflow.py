@@ -7,8 +7,6 @@ Provides a streamlined process for annotating components and creating batch conf
 """
 
 import asyncio
-import os
-import sys
 from pathlib import Path
 
 # Import our custom tools
@@ -28,12 +26,14 @@ class AnnotationWorkflow:
         print("="*60)
         print("1. Annotate individual components")
         print("2. Consolidate configurations into batch")
-        print("3. View annotation statistics")
-        print("4. Clean up annotation files")
-        print("5. Exit")
+        print("3. Create enhanced configuration template")
+        print("4. Upgrade existing configuration")
+        print("5. View annotation statistics")
+        print("6. Clean up annotation files")
+        print("7. Exit")
         print("-"*60)
         
-        return input("Select option (1-5): ").strip()
+        return input("Select option (1-7): ").strip()
     
     async def run_annotation_tool(self):
         """Run the annotation tool."""
@@ -151,6 +151,122 @@ class AnnotationWorkflow:
             print(f"✓ Deleted {deleted} files.")
         else:
             print("Deletion cancelled.")
+
+    def create_enhanced_template(self):
+        """Create an enhanced configuration template."""
+        print("\n" + "="*60)
+        print("Create Enhanced Configuration Template")
+        print("="*60)
+
+        # Get template settings from user
+        template_name = input("Template name (default: enhanced_template): ").strip()
+        if not template_name:
+            template_name = "enhanced_template"
+
+        try:
+            num_runs = int(input("Number of runs per task (default: 1): ").strip() or "1")
+        except ValueError:
+            num_runs = 1
+
+        try:
+            checkpoint_interval = int(input("Checkpoint interval (default: 1): ").strip() or "1")
+        except ValueError:
+            checkpoint_interval = 1
+
+        enable_checkpoints = input("Enable checkpoints? (Y/n): ").strip().lower() not in ['n', 'no']
+        parallel_execution = input("Enable parallel execution? (y/N): ").strip().lower() in ['y', 'yes']
+
+        max_workers = 1
+        if parallel_execution:
+            try:
+                max_workers = int(input("Max parallel workers (default: 3): ").strip() or "3")
+            except ValueError:
+                max_workers = 3
+
+        # Create consolidator with enhanced settings
+        consolidator = ConfigConsolidator(
+            enable_checkpoints=enable_checkpoints,
+            checkpoint_interval=checkpoint_interval,
+            num_runs_per_task=num_runs,
+            parallel_execution=parallel_execution,
+            max_parallel_workers=max_workers
+        )
+
+        # Create template
+        template_path = consolidator.create_enhanced_template(template_name)
+
+        if template_path:
+            print(f"\n✅ Enhanced template created: {template_path}")
+            print("\n🚀 Template features:")
+            print(f"  • Checkpoints: {enable_checkpoints}")
+            print(f"  • Checkpoint interval: {checkpoint_interval}")
+            print(f"  • Runs per task: {num_runs}")
+            print(f"  • Parallel execution: {parallel_execution}")
+            print(f"  • Max workers: {max_workers}")
+        else:
+            print("❌ Failed to create template")
+
+    def upgrade_existing_config(self):
+        """Upgrade an existing configuration with enhanced features."""
+        print("\n" + "="*60)
+        print("Upgrade Existing Configuration")
+        print("="*60)
+
+        # Get configuration file path
+        config_file = input("Path to configuration file: ").strip()
+        if not config_file:
+            print("❌ Configuration file path is required")
+            return
+
+        if not Path(config_file).exists():
+            print(f"❌ Configuration file not found: {config_file}")
+            return
+
+        # Get upgrade settings
+        try:
+            num_runs = int(input("Number of runs per task (default: 1): ").strip() or "1")
+        except ValueError:
+            num_runs = 1
+
+        try:
+            checkpoint_interval = int(input("Checkpoint interval (default: 1): ").strip() or "1")
+        except ValueError:
+            checkpoint_interval = 1
+
+        enable_checkpoints = input("Enable checkpoints? (Y/n): ").strip().lower() not in ['n', 'no']
+        parallel_execution = input("Enable parallel execution? (y/N): ").strip().lower() in ['y', 'yes']
+
+        max_workers = 1
+        if parallel_execution:
+            try:
+                max_workers = int(input("Max parallel workers (default: 3): ").strip() or "3")
+            except ValueError:
+                max_workers = 3
+
+        # Create consolidator with enhanced settings
+        consolidator = ConfigConsolidator(
+            enable_checkpoints=enable_checkpoints,
+            checkpoint_interval=checkpoint_interval,
+            num_runs_per_task=num_runs,
+            parallel_execution=parallel_execution,
+            max_parallel_workers=max_workers
+        )
+
+        # Upgrade configuration
+        upgraded_path = consolidator.upgrade_existing_config(
+            config_file_path=config_file,
+            enable_checkpoints=enable_checkpoints,
+            checkpoint_interval=checkpoint_interval,
+            num_runs_per_task=num_runs,
+            parallel_execution=parallel_execution,
+            max_parallel_workers=max_workers
+        )
+
+        if upgraded_path:
+            print(f"\n✅ Configuration upgraded: {upgraded_path}")
+            print(f"💾 Backup created: {Path(config_file).with_suffix('.backup.json')}")
+        else:
+            print("❌ Failed to upgrade configuration")
     
     async def run(self):
         """Run the main workflow."""
@@ -168,13 +284,17 @@ class AnnotationWorkflow:
                 elif choice == '2':
                     self.run_consolidation()
                 elif choice == '3':
-                    self.show_statistics()
+                    self.create_enhanced_template()
                 elif choice == '4':
-                    self.cleanup_files()
+                    self.upgrade_existing_config()
                 elif choice == '5':
+                    self.show_statistics()
+                elif choice == '6':
+                    self.cleanup_files()
+                elif choice == '7':
                     break
                 else:
-                    print("Invalid option! Please select 1-5.")
+                    print("Invalid option! Please select 1-7.")
         
         except KeyboardInterrupt:
             print("\nWorkflow interrupted.")

@@ -43,6 +43,10 @@ class BatchSettings:
     save_individual_results: bool = True
     export_formats: List[str] = field(default_factory=lambda: ["json"])
     reuse_browser_per_file: bool = True  # Reuse browser for tasks on same HTML file
+    # New checkpoint and multiple runs settings
+    enable_checkpoints: bool = True
+    checkpoint_interval: int = 1  # Save checkpoint after every N tasks
+    num_runs_per_task: int = 1  # Number of times to run each task
 
 
 @dataclass
@@ -189,7 +193,10 @@ def create_sample_batch_config(output_path: Union[str, Path]) -> None:
             "max_parallel_workers": 2,
             "continue_on_failure": True,
             "save_screenshots": True,
-            "export_formats": ["json", "csv"]
+            "export_formats": ["json", "csv"],
+            "enable_checkpoints": True,
+            "checkpoint_interval": 1,
+            "num_runs_per_task": 1
         },
         "global_agent_config": {"type": "placeholder"},
         "global_browser_config": {"type": "chromium", "headless": False}

@@ -11,6 +11,8 @@ from .controller.evaluation_controller import EvaluationController
 from .environment.web_environment import WebEnvironment
 from .agent.base_agent import BaseAgent
 from .agent.uitars_agent import UITARSAgent
+from .agent.uitars_pro import UITARSProAgent
+from .agent.text_agent import TextAgent
 
 # Import batch functionality
 try:

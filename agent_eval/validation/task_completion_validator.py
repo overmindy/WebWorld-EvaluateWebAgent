@@ -155,6 +155,7 @@ class TaskCompletionValidator:
 
             if actual_type != expected_type:
                 # Count this as one field check that failed
+                logger.warning(f"Type mismatch: expected '{expected_type}', got '{actual_type}'")
                 total_fields = 1
                 correct_fields = 0
                 return {
