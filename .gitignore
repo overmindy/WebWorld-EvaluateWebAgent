@@ -192,5 +192,6 @@ output/
 references/
 *.txt
 docs/
-config*
+config_api.py
+config_consolidator.py
 enhanced_config_manager.py
