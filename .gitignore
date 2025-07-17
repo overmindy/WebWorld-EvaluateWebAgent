@@ -192,3 +192,5 @@ output/
 references/
 *.txt
 docs/
+config*
+enhanced_config_manager.py
